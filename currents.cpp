@@ -14,8 +14,8 @@ void RS::calc(double t, double I, double *y1, double *f1){
 
 //  double beta_n  = beta_e *  (I-ud*pd*(x+1.2)+0.15*H1(x)-pl*(x+(1-sigma)));
 //  double sigma_n = sigma_e * (I-ud*pd*(x+1.2)+0.15*H1(x)-pl*(x+(1-sigma)));
-  double beta_n  = beta_e *  (I-ud*(pd*fac_pD_cx_map)*(x+1.2)+0.15*H1(x)-(pl*fac_pL_cx_map)*(x+(1-(sigma*pl*fac_pL_cx_map))));
-  double sigma_n = sigma_e * (I-ud*(pd*fac_pD_cx_map)*(x+1.2)+0.15*H1(x)-(pl*fac_pL_cx_map)*(x+(1-(sigma*pl*fac_pL_cx_map))));
+  double beta_n  = beta_e *  (I-ud*(pd*fac_pD_cx_map)*(x+1.2)+0.15*H1(x)-(pl*fac_pL_cx_map*pL_scaler)*(x+(1-(sigma*pl*fac_pL_cx_map*pL_scaler))));
+  double sigma_n = sigma_e * (I-ud*(pd*fac_pD_cx_map)*(x+1.2)+0.15*H1(x)-(pl*fac_pL_cx_map*pL_scaler)*(x+(1-(sigma*pl*fac_pL_cx_map*pL_scaler))));
   //double beta_n  = beta_e *  (I-ud*pd*(x+1.2)+0.15*H1(x)-pl*(x+1.2));
   //double sigma_n = sigma_e * (I-ud*pd*(x+1.2)+0.15*H1(x)-pl*(x+1.2));
 
@@ -53,7 +53,7 @@ void RS::calc(double t, double I, double *y1, double *f1){
 	
  // //y = y - mu* (xp +1.0) + mu * ( sigma + sigma_n + pl * (sigmoid1(ml*(sigma_n + bl)) - 1) );
  // y = y - mu1 * (xp +1.0) + mu2 * ( sigma + sigma_n);
-  y = y - mu1 * (xp +1.0) + mu2 * ( (sigma*pl*fac_pL_cx_map) + sigma_n);
+  y = y - mu1 * (xp +1.0) + mu2 * ( (sigma*pl*fac_pL_cx_map*pL_scaler) + sigma_n);
   //printf(" y_val = %lf",y);
   //if (y<-2.855) y=-2.855;
   xp = x;
@@ -101,7 +101,7 @@ void FS1::calc(double t, double I, double *y1, double *f1){
  }
 
  //y = y - mu* (xp +1.0) + mu * sigma + mu * sigma_n;
- y = -2.93;
+ y = -2.93*fac_yrest; // was 2.93 = dead IN cells
  xpp = xp;
  xp = x; 
  v_DEND = v_SOMA = x*50-15;
@@ -818,6 +818,8 @@ double AMPAmapD1::calc(double x, double y_pre, int y_post){
  // g_AMPA=strength;
  if(y_post > 0.1){
   g = gamma * g + d*strength/15;   //factor is to match EPSC amplitude to the kinetics model
+  // USE 1 IN PLACE OF D
+  //g = gamma * g + 1*strength/15;   //factor is to match EPSC amplitude to the kinetics model
   d = (1.0 - d_dep)*d;
   lastrelease = x;   //any release
   lastrelease1 = x;  //only spike  
@@ -849,15 +851,17 @@ double AMPAmapD1::calc(double x, double y_pre, int y_post){
  }
  else{
   g = gamma * g;
-  d = 1.0 - (1.0 - d_rec) * (1.0 - d);
+  d = 1.0 - (1.0 - d_rec) * (1.0 - d); // 1 - 0.99995 * .9 = 0.100045 if d = 0.1
  }
+ 
+ g_track = g;
+ d_track = d;
 
  I = fac_AMPA_D2 *g * (y_pre - E_AMPA);
  return I;
  //Tcr=x+h;
 
 }
-
 
 //=------------------------------
 double AMPAmapD::E_AMPA = 0; //, AMPAmapD::gamma = 0.98; //0.6;
@@ -887,7 +891,7 @@ double AMPAmapD::calc(double x, double y_pre, int y_post){
  // g_AMPA=strength;
  if(y_post){
 	I = gamma * I - d*strength * (y_pre - E_AMPA);
-	d = (1.0 - d_dep)*d;
+  d = (1.0 - d_dep)*d;
  }
  else{
 	I = gamma * I;

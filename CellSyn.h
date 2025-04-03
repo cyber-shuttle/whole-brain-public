@@ -51,6 +51,15 @@ using namespace std;
 #define TAU_Map  0.5  // time step for maps
 #define TAUr     25   //(TAU_Map/TAU)
 
+// Need to access these for stim purposes
+extern double stim_on;
+extern double stim_start;
+extern double stim_stop;
+extern double stim_stren;
+extern int *clust_ids;
+extern int *cut_ids;
+extern int *stim_ids;
+
 void print_spike_time(double time,int type,int m,int n);
 
 //information about each cell as read from network file. CellSyn contain members relater rather to computation
@@ -1868,6 +1877,7 @@ class IN6syn_Map: public CellSyn {
 //peters funcs
 //Peter - fix all of these to make them match also clean up arguments
 int get_cell_index(int type, int m, int n);
+double get_connection_length(int type, int m, int n);
 void apply_field(double ***field_effect, double **cx5_local_field, double **cx6_local_field,double **cx5_soma_local_field, double **cx6_soma_local_field,int ii,double time,FILE **field_file);
 void allocate_state_save(double ***cx_base_v_SOMA, double ***cx5b_base_v_SOMA, double ***cx5_local_field,double ***cx6_local_field,double ***cx5_soma_local_field,double ***cx6_soma_local_field, double ****field_effect);
 void spike_fre_calc(int *total_region,double *frequencies);

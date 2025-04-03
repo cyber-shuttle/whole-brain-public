@@ -35,7 +35,15 @@ void load_input_params(
   double&  homeo_fre_boost,
   double&  homeo_target_f,
   int&  homeo_fre_window,
-  int&  homeo_num_regions
+  int&  homeo_start,
+  int&  homeo_num_regions,
+  int&  homeo_num_clusters,
+  int&  undercut,
+  int&  undercut_start,
+  double& stim_on,
+  double& stim_start,
+  double& stim_stop,
+  double& stim_stren
 
  );
 
