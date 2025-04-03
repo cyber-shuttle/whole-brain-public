@@ -1,8 +1,8 @@
 #Parameters for simulation. Can be overload on commandline, e.g. -t3D 1
 #New param has to be added to io.h/cpp
 
-#tmax how long the program runs(millisec)
-tmax 150000
+#tmax how long the program runs(millisec), usually 15000
+tmax 10
 
 #t3d when to start prints
 t3D 0
@@ -33,19 +33,44 @@ LFP_num_field_layers 8
 homeo_boost 0
 
 #amp_boost how much to boost mini amp by
-homeo_amp_boost 0.0
+homeo_amp_boost 1
 
-#con_boost how much to boost cx*->cx* connection s by
-homeo_con_boost 0.0
+#con_boost how much to boost cx*->cx* connections by
+homeo_con_boost 1
 
 #fre_boost how much to boost mini fre by
-homeo_fre_boost 0.0
+homeo_fre_boost 1
 
 #target_f target frequency for firing
-homeo_target_f 0.015
+# spikes per ms - so ~12.5 Hz
+homeo_target_f 0.007
 
 #fre_window time steps for freqency tracking window 50 time steps per millisecond with tau at 0.02
-homeo_fre_window 40000
+# 40k = every 800 ms, 60k = 1.2 seconds 
+homeo_fre_window 60000
+
+# When to start / turn on homeostatic scaling (to let network settle in initially) in ms
+homeo_start 5000
 
 # what percent of the network should be cut at. 0-1.0 not inclusive now in create connections
 homeo_num_regions 10
+
+# Local HSP clusters. 180 parcels, 6 random clusters
+homeo_num_clusters 6
+
+# 1 for undercut on, 0 for off
+undercut 0
+
+# When to apply undercut
+undercut_start 10000
+
+# Turn stimulation On
+stim_on 0
+
+# Stim Start & Stop Times (duration of pulses hard coded in CellSyn.cpp)
+# Previously 10k - 25k for pulses
+stim_start 10000
+stim_stop 10500
+
+# Stimulation strength, orig was 2.8, then 0.1. Need to find min level
+stim_stren 0.5

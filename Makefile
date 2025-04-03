@@ -14,7 +14,7 @@ check-prepare: mindcurrent
 	cd test; for f in *; do cp -f  $$f .$$f; done
 
 run: mindcurrent
-	./mindcurrent params.txt out connection_info2
+	./mindcurrent params.txt out_w17_printIN connection_info2 sixclusters_nml.csv c1half_rand.csv undercut_nml_c1all.csv
 
 runPaperDelays: mindcurrent
 	./mindcurrent params.txt out /bazhlab/edelanois/tch/spindleNetwork/conn_s7_bqr_30-Aug-2017/connectionsFiles/connection_info2-delays

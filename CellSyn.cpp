@@ -1,5 +1,6 @@
 #include "CellSyn.h"
 
+inline double rand01(){return ((double) rand() / (RAND_MAX));}
 
 CellSyn::CellSyn(int i,int j,int b_size,int t_size,Cell_Info *cell_info,int type){    
 
@@ -680,6 +681,58 @@ void CellSyn::calc(double x, double *y_ini, double *f_ini, int step){
     }
 
   }
+
+  
+ // STIMULATION
+  int period=5000; // pulse every how many seconds
+  double stime=fmod(x,period);
+  
+
+  if (stim_on == 1){
+    if(x>=stim_start&&x<stim_stop){
+      // 500 ms pulses @ start of each second
+      //if ((stime>=0)&&(stime<500)){ 
+        // Stim all of clust 1
+        if (this->type == E_CX && stim_ids[this->m]==1){ // && (rand01() <= .8)){  //E_L2
+          current=current + stim_stren;
+        }
+        // else if (this->type == E_CX3 && stim_ids[this->m]==1 && (rand01() <= .78)){ //E_L3
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_CX4 && stim_ids[this->m]==1){ // && (rand01() <= .6)){ //E_L4
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_CX5a && stim_ids[this->m]==1 && (rand01() <= .2)){ //E_L5
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_CX5b && stim_ids[this->m]==1 && (rand01() <= .2)){ //E_L5
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_CX6 && stim_ids[this->m]==1 && (rand01() <= .18)){ //E_L6
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_IN && stim_ids[this->m]==1 && (rand01() <= .9)){ //IN_L2
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_IN3 && stim_ids[this->m]==1 && (rand01() <= .75)){ //IN_L3
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_IN4 && stim_ids[this->m]==1 && (rand01() <= 1.0 )){ //IN_L4
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_IN5a && stim_ids[this->m]==1 && (rand01() <= .25)){ //IN_L5
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_IN5b && stim_ids[this->m]==1 && (rand01() <= .25)){ //IN_L5
+        //   current=current + stim_stren;
+        // }
+        // else if (this->type == E_IN6 && stim_ids[this->m]==1 && (rand01() <= .18)){ //IN_L6
+        //   current=current + stim_stren;
+        // }
+      //}
+    }
+  }
+  // END STIMULATION
 
   current =  current - calc_GiantSyns();
   base_cell->calc(x, current, y_ini, f_ini);

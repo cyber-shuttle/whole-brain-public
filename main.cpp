@@ -3,9 +3,11 @@
 //Most recently edited by Peter Lonjers(just search the net if you need to find me)
 //I added all the MPI stuff but don't know much about the bio
 #include <omp.h>
+#include <assert.h>
 #include "CellSyn.h"    //header for all classes describing currents and basic cell types
 #include "io.h"
 #include "network.h"
+#include <stdio.h>
 
 int num_mp_threads; //number of openMP threads 
 
@@ -31,16 +33,25 @@ double t3D;
 double ttime;
 //how long main process runs for set in input
 double run_time = 0; 
+// current stimulation parameters
+double stim_on;
+double stim_start;
+double stim_stop;
+double stim_stren;
 
 //TODO encapsulare these into single "network" object
 // number of types of cells
 int Num_Types; 
+int Num_Cells_CX = 10242;
 //gives the dimensions of the arrays of cells of each type
 Pair *cell_sizes;
 //total number of cells
 int num_cells;
 //total number of cells of each type
 int *cell_numbers;
+int *clust_ids;
+int *cut_ids;
+int *stim_ids;
 //cells info is an array of all cells containing the color of each cell and the numbers of different types of connections it has.
 Cell_Info ****cells_info = NULL;
 //array of all the pointers to cells belonging to this process
@@ -50,11 +61,19 @@ int *mapns, *hhns;
 
 int mapi,hhi;
 
+double ***Dist_Prob;
+const char *dist_file = "/bazhlab/ysokolov/meg/newConn/conn_data/v7/dist_inMeters_prob_LH_onesOnDiag.txt";
 
-
-int awake_end = -1;
+int awake_end = 300000; //-1;
 int stage2_end = -1; // 200000;
-int stage3_end = 200000; //stage2_end; // -1;
+int stage3_end = -1; //200000; //stage2_end; // -1;
+int recovery_count = 0;
+int ramp = 0;
+
+
+int mriPointsFull = 20500;
+int num_dist_param = 2;
+int MRI_POINTS = 12500;
 
 double fac_gkl; 
 double fac_gkl_TC;  
@@ -73,6 +92,8 @@ double fac_GABA_TC;
 
 double fac_pL_cx_map;
 double fac_pD_cx_map;
+
+double fac_yrest;
 
 
 //run for openMP
@@ -133,6 +154,30 @@ void runMP(int all){
   }
 }
 
+
+// Load Distance between columns
+void load_3D_dist_prob(const char *file){
+  //cerr << "load_3D_dist_prob" << endl;
+
+  FILE *f=fopen(file,"r"); assert(f);
+  printf("Dist File Opened... \n");
+
+  while(1){
+    int from,to;
+    double dist, conn_prob;
+    if(fscanf(f,"%d %d %lf %lf\n",&from,&to,&dist,&conn_prob)!=4){
+      break;
+    }
+    from--; to--; //MATLAB vs C indexing
+    assert(from<MRI_POINTS); assert(to<MRI_POINTS);
+    Dist_Prob[from][to][0]=dist;
+    Dist_Prob[from][to][1]=conn_prob;
+  }
+
+  fclose(f);
+}
+
+
 //gets index for a particular cell in a group(cells on the same process)
 //ATM can be used as mapping from layer&2D location into global cells array
 int get_cell_index(int type, int m, int n){
@@ -140,6 +185,16 @@ int get_cell_index(int type, int m, int n){
   return cells_info[type][m][n]->cell_index;
 }
 
+double get_connection_length(int from, int to){
+  return Dist_Prob[from][to][0];
+}
+
+
+void init_pL_scaler(){
+  for(int i=0; i<num_cells; i++){
+    cells[i]->base_cell->pL_scaler = 1;
+  }
+}
 
 //all arguments are inputs
 //this functions decides what cells a process should simulate and starts them
@@ -156,12 +211,21 @@ void initialize_cells(CellSyn** &cells){
  int m = 0;
  int n = 0;
  int total_set = 0;
+
+  // 250944
+ printf("num cells: %d", num_cells);
+ //exit(1);
   
  cells = new CellSyn*[num_cells];
+ printf("New Cells!");
  for(m = 0; m<num_cells; m++){
+  printf("cells %d\n", m);
   cells[m]= NULL;
  }
 
+ printf("cells allocated");
+
+ // Failing here with new additions for synapse length
  for(type = 0; type<Num_Types; type++){ 
 	printf("Initializing cell %d for %d, %d\n",type, cell_sizes[type].x, cell_sizes[type].y);  
   for(m=0; m<cell_sizes[type].x; m++){
@@ -244,6 +308,12 @@ void scale_synapses(CellSyn** &cells, int num_cells){
             }
         }
 
+        // SCALE MINIS AGAIN
+        // for(int k=0; k < cells[i]->num_syns; k++){
+        //     cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s * 0.0;
+        //     cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre * 0.0;
+        // }
+
         for(int k=0;k<Num_Types;k++)
             delete[] syn_numbers[k];
 
@@ -280,6 +350,178 @@ double print_receive(int m , int n, enum Cell_Type type){
 
   message = cells[group_index]->base_cell->get_v_soma();
   return message;
+}
+
+vector<double> print_receive_allIN(int m , int n, enum Cell_Type type){
+  int group_index = get_cell_index(type,m,n);
+
+ vector<double> message = {};
+
+  if(m == 1060){
+    message = cells[group_index]->base_cell->get_in_all();
+  }
+
+  return message;
+}
+
+
+double print_receive_syn(int m , int n, enum Cell_Type type){
+
+  int group_index = get_cell_index(type,m,n); // ranges from 2k to 12k?
+
+  double sum = 0;
+  double avg = 0;
+  int counter = 0;
+  int k = 0;
+  
+  for(k=0; k < cells[group_index]->num_syns; ++k){
+    if(cells[group_index]->syns[k]->type == E_AMPAMap_D1){   // || cells[i]->syns[k]->type == E_NMDAMap_D1 
+     sum = sum + abs(cells[group_index]->syns[k]->strength);
+     counter = counter + 1;
+    }
+  }
+  if(sum==0){
+    avg = sum;
+  }
+  else{
+    avg = sum / counter; 
+  }
+
+  return avg;
+}
+
+double print_receive_g(int m , int n, enum Cell_Type type){
+
+  int group_index = get_cell_index(type,m,n); // ranges from 2k to 12k?
+
+  double sum_g = 0;
+  double avg_g = 0;
+  int counter = 0;
+  int k = 0;
+  
+  // Average over synapses for a given cell
+  for(k=0; k < cells[group_index]->num_syns; ++k){
+    if(cells[group_index]->syns[k]->type == E_AMPAMap_D1){   // || cells[i]->syns[k]->type == E_NMDAMap_D1 
+     sum_g = sum_g + cells[group_index]->syns[k]->g_track;
+     counter = counter + 1;
+    }
+  }
+
+  if(sum_g==0){
+    avg_g = sum_g;
+  }
+  else{
+    avg_g = sum_g / counter; 
+  }
+
+  return avg_g;
+}
+
+double print_receive_g_1cell1syn(int m , int n, enum Cell_Type type){
+
+  int group_index = get_cell_index(type,m,n); // ranges from 2k to 12k?
+
+  double sum_g = 0;
+  double avg_g = 0;
+  int counter = 0;
+  int k = 0;
+
+  for(k=0; k < cells[group_index]->num_syns; ++k){
+    if(cells[group_index]->syns[k]->type == E_AMPAMap_D1){ 
+      sum_g = sum_g + cells[group_index]->syns[k]->g_track;
+      counter = counter + 1;
+    }
+  }
+
+  if(sum_g==0){
+    avg_g = sum_g;
+  }
+  else{
+    avg_g = sum_g / counter; 
+  }
+
+  return avg_g;
+}
+
+
+double print_receive_d(int m , int n, enum Cell_Type type){
+
+  int group_index = get_cell_index(type,m,n); // ransges from 2k to 12k?
+
+  double sum_d = 0.0;
+  double avg_d = 0.0;
+  int counter = 0;
+  int k = 0;
+  
+  // Average over synapses for a given cell
+  for(k=0; k < cells[group_index]->num_syns; ++k){
+    if(cells[group_index]->syns[k]->type == E_AMPAMap_D1){
+      sum_d = sum_d + cells[group_index]->syns[k]->d_track;
+      counter = counter +1;
+    }
+  }
+
+  if(sum_d==0){
+    avg_d = sum_d;
+  }
+  else{
+    avg_d = sum_d / counter; 
+  }
+
+  return avg_d;
+}
+
+
+double print_receive_minis(int m , int n, enum Cell_Type type){
+
+  int group_index = get_cell_index(type,m,n); // ransges from 2k to 12k?
+
+  double sum_mini = 0;
+  double avg_mini = 0;
+  int counter = 0;
+  int k = 0;
+  
+  // Average over synapses for a given cell
+  for(k=0; k < cells[group_index]->num_syns; ++k){
+    if(cells[group_index]->syns[k]->type == E_AMPAMap_D1){   // || cells[i]->syns[k]->type == E_NMDAMap_D1 
+      sum_mini = sum_mini + abs(cells[group_index]->syns[k]->mini_s);
+      counter = counter +1;
+    }
+  }
+
+  if(sum_mini==0){
+    avg_mini = sum_mini;
+  }
+  else{
+    avg_mini = sum_mini / counter; //cells[group_index]->num_syns; 
+  }
+
+  return avg_mini;
+}
+
+double print_receive_minifre(int m , int n, enum Cell_Type type){
+
+  int group_index = get_cell_index(type,m,n); // ransges from 2k to 12k?
+
+  double sum_mini = 0;
+  double avg_mini = 0;
+  int k = 0;
+  
+  // Average over synapses for a given cell
+  for(k=0; k < cells[group_index]->num_syns; ++k){
+    if(cells[group_index]->syns[k]->from_type ==  cells[group_index]->syns[k]->to_type && (cells[group_index]->syns[k]->type == E_AMPAMap_D1)){   // || cells[i]->syns[k]->type == E_NMDAMap_D1 
+      sum_mini = sum_mini + abs(cells[group_index]->syns[k]->mini_fre);
+    }
+  }
+
+  if(sum_mini==0){
+    avg_mini = sum_mini;
+  }
+  else{
+    avg_mini = sum_mini / k; //cells[group_index]->num_syns; 
+  }
+
+  return avg_mini;
 }
 
 //receive for getting things to the root printing
@@ -401,9 +643,9 @@ extern FILE *f28; //TODO get rid of this
 
 void load_input_data(int argc, char *argv[]){ //TODO move global variables into local ones perhaps move it to io.h/c
     //checks inputs
-  if (argc < 4) {
+  if (argc < 6) {
     puts("Bad command: Should be");
-    puts("input_file_name output_directory connections_file_name"); 
+    puts("input_file_name output_directory connections_file_name hsp_ids undercut_ids stim_ids"); 
     exit(1);
   }
   //TODO check to make sure output location exists
@@ -419,6 +661,7 @@ void load_input_data(int argc, char *argv[]){ //TODO move global variables into 
 
   set_cell_sizes(connections_file,Num_Types,cell_sizes,cell_numbers); //scans connections file for how many cells of each type we have
   create_connections_from_file(&cells_info,cell_sizes,connections_file,Num_Types);
+  // above prints "cells are set"
     
   //finds total number of cells
   num_cells = 0;
@@ -426,6 +669,33 @@ void load_input_data(int argc, char *argv[]){ //TODO move global variables into 
     num_cells = num_cells+cell_numbers[iter];
   }
   printf("number cells: %d\n",num_cells);
+
+//open up the local HSP ID's
+  FILE *hsp_ids;
+  if (!(hsp_ids=fopen(argv[4],"r"))) {
+    printf("%s file for HSP region ids does not exist or something\n",argv[4]);
+    exit(1); 
+  }
+
+  get_clusters(hsp_ids,Num_Cells_CX,clust_ids);
+
+  //open up the local undercut ID's
+  FILE *undercut_ids;
+  if (!(undercut_ids=fopen(argv[5],"r"))) {
+    printf("%s file for undercut ids does not exist or something\n",argv[5]);
+    exit(1); 
+  }
+
+  get_undercut(undercut_ids,Num_Cells_CX,cut_ids);
+
+   //open up the stimulation ID's
+  FILE *stimulation_ids;
+  if (!(stimulation_ids=fopen(argv[6],"r"))) {
+    printf("%s file for stimulation ids does not exist or something\n",argv[6]);
+    exit(1); 
+  }
+
+  get_stimulation(stimulation_ids,Num_Cells_CX,stim_ids);
 
  } //load_input_data
 
@@ -435,17 +705,36 @@ int main(int argc,char **argv){
   LocalFieldPotential LFP;
 
   load_input_data(argc,argv);
-  load_input_params(argc,argv,tmax,t3D,ttime,num_mp_threads,print_c_sten,fre_print_cs,LFP.local_field_effect,LFP.lfp_scale,LFP.num_field_layers,homeo.boost,homeo.amp_boost,homeo.con_boost,homeo.fre_boost,homeo.target_f,homeo.fre_window,homeo.num_regions);
-
+  load_input_params(argc,argv,tmax,t3D,ttime,num_mp_threads,print_c_sten,fre_print_cs,LFP.local_field_effect,LFP.lfp_scale,LFP.num_field_layers,homeo.boost,homeo.amp_boost,homeo.con_boost,homeo.fre_boost,homeo.target_f,homeo.fre_window,homeo.start,homeo.num_regions, homeo.num_clusters, homeo.undercut, homeo.undercut_start, stim_on, stim_start, stim_stop, stim_stren);
   // seed random number generator with current second of execution
   // srand(time(NULL)); 
   srand(2002); 
 
+  printf("input params loaded... \n");
+
   homeo.allocate();
+
+  // Initialize Dist Prob
+  Dist_Prob = new double**[mriPointsFull];
+  for(int i = 0; i < mriPointsFull; i++){
+    Dist_Prob[i] = new double*[mriPointsFull];  
+    for(int j = 0; j < mriPointsFull; j++){
+      Dist_Prob[i][j] = new double[num_dist_param];  
+      for(int k = 0; k < num_dist_param; k++){
+        Dist_Prob[i][j][k] = -1;
+      }
+    }
+  }
+
+
+  printf("Loading Dist Matrix... \n");
+  load_3D_dist_prob(dist_file);
 
   printf("Call Initialize cells ...\n");
 
   initialize_cells(cells);
+
+  init_pL_scaler();
 
   printf("Scaling synapses ...\n");
 
@@ -454,6 +743,8 @@ int main(int argc,char **argv){
   LFP.init();
   open_files(output_location,LFP.field_file,LFP.num_field_layers);  
   LFP.allocate_state_save(cell_sizes);
+
+   FILE * SpikeFre = fopen((output_location+"spikefre").c_str(), "w");
 
   //------Main Loop--------
   printf("timer started");
@@ -487,35 +778,35 @@ int main(int argc,char **argv){
   double s2_scale=1.2;
   double s3_scale=1.2; // 2.0;
 
-  double gkl_awake_fix     = 0.8333; // 0.19; //
+  double gkl_awake_fix     = 1; //0.8333; // 0.19; //
   double gkl_s2            = gkl_awake_fix*s2_scale; //
-  double gkl_s3            = gkl_awake_fix*s3_scale; //
+  double gkl_s3            = 1; //gkl_awake_fix*s3_scale;
 
-  double gkl_TC_awake_fix  =  0.8; //correct1_func(awake_ach_fac ,0.0);
+  double gkl_TC_awake_fix  = 0.8; //correct1_func(awake_ach_fac ,0.0);
   double gkl_TC_s2         = gkl_TC_awake_fix*s2_scale; //
-  double gkl_TC_s3         = gkl_TC_awake_fix*s3_scale; //
+  double gkl_TC_s3         = 0.96;
 
   double gkl_RE_awake_fix  =  0.9; //correct1_func(awake_ach_fac ,0.0);
   double gkl_RE_s2         = gkl_RE_awake_fix*((2-s2_scale/2)-0.5); //
-  double gkl_RE_s3         = gkl_RE_awake_fix*((2-s3_scale/2)-0.5); //
+  double gkl_RE_s3         = 0.81;
 
-  double awake_AMPAd2_fix  = 0.8772; // 0.19; //wake_ach_fac;
+  double awake_AMPAd2_fix  = 0.35; //0.2; // 0.19; //wake_ach_fac;
   double s2_AMPAd2         =awake_AMPAd2_fix*s2_scale*0.95; //
-  double s3_AMPAd2         = 0.365; //0.1; // 0.01;// 0.001; //0.5; // 1.14; // awake_AMPAd2_fix*s3_scale*1.28; //
+  double s3_AMPAd2         = 0.365 + (0.365*0.5);
 
-  double gh_TC_awake       =-8.0; //
+  double gh_TC_awake       =-1.0; //
   double gh_TC_s2          = 0.0; // -2.0; 
-  double gh_TC_s3          =  -1.0; 
+  double gh_TC_s3          =-1.0; 
 
-  double awake_GABAd2_fix  = 0.8333; // 0.22; //0.6; //awake_gaba_fac;
+  double awake_GABAd2_fix  = 0.5; // 0.22; //0.6; //awake_gaba_fac;
   double s2_GABAd2         =awake_GABAd2_fix*s2_scale; //
-  double s3_GABAd2         =awake_GABAd2_fix*s3_scale; //
+  double s3_GABAd2         =1; //
 
-  double awake_GABA_TC_fix =  0.6; //awake_gaba_fac;
+  double awake_GABA_TC_fix = 0.6; //awake_gaba_fac;
   double s2_GABA_TC        =awake_GABA_TC_fix*s2_scale; //
-  double s3_GABA_TC        =awake_GABA_TC_fix*s3_scale; //
+  double s3_GABA_TC        = 0.72; //
 
-  double awake_AMPA_TC     = 1.0; //0.5; 
+  double awake_AMPA_TC     = 0.0; //0.1;
   double s2_AMPA_TC        = 1.0; //0.5; 
   double s3_AMPA_TC        = 0.1; 
 
@@ -527,44 +818,54 @@ int main(int argc,char **argv){
   double gk_cx_spike_s2    = 1.0; 
   double gk_cx_spike_s3    = 1.0; 
 
-  double pL_cx_map_awake   = 1.0;
+  double pL_cx_map_awake   = 0.15;
   double pL_cx_map_s2      = 0.15;
   double pL_cx_map_s3      = 0.5;
 
-  double pD_cx_map_awake   = 1.0;
+  double pD_cx_map_awake   = 3.0;
   double pD_cx_map_s2      = 5.5;
   double pD_cx_map_s3      = 4.0;
+
+  double yrest_awake       = 0.991;
+  double yrest_s2          = 1;
+  double yrest_s3          = 1;
 
 
 
   print_connectivity(cell_sizes);
 
+  // DO ONCE to get orig HSP parameters
+  homeo.orig_strengths(cells, num_cells);
 
-
+  // Scale within-column connections
+  homeo.reduce_column(cells,num_cells);
 
 
   while( t < tmax){ 
     //printf("total_rec:%d root\n",total_rec);
     total_rec = 0;
 
+  //printf("pL scaler: %f", cells[100]->base_cell->pL_scaler);
 
   if ((t<=awake_end)){
 
       // Fix all values for awake state
-      fac_AMPA_D2 = awake_AMPAd2_fix*0.7;
+      fac_AMPA_D2 = awake_AMPAd2_fix;
       fac_AMPA_TC = awake_AMPA_TC;
       fac_GABA_D2 = awake_GABAd2_fix;
       fac_GABA_TC = awake_GABA_TC_fix;
       fac_gkl_RE  = gkl_RE_awake_fix;
-      fac_gkl_TC  = gkl_TC_awake_fix*0.5;
-      fac_gkl     = gkl_awake_fix*0.7;
-      fac_gh_TC   = gh_TC_awake*3;
+      fac_gkl_TC  = gkl_TC_awake_fix;
+      fac_gkl     = gkl_awake_fix;
+      fac_gh_TC   = gh_TC_awake;
       fac_gkca_cx = gk_cx_slow_awake;
       fac_gkm_cx  = gk_cx_slow_awake;
       fac_gkv_cx  = gk_cx_spike_awake;
 
       fac_pL_cx_map = pL_cx_map_awake;
       fac_pD_cx_map = pD_cx_map_awake;
+
+      fac_yrest = yrest_awake;
 
     }else if ((t>awake_end&&t<=stage2_end)){
 
@@ -584,6 +885,8 @@ int main(int argc,char **argv){
       fac_pL_cx_map = pL_cx_map_s2;
       fac_pD_cx_map = pD_cx_map_s2;
 
+      fac_yrest = yrest_s2;
+
     }else if ((t>stage2_end&&t<=stage3_end)){
       // Fix all values for S3
       fac_AMPA_D2 = s3_AMPAd2;
@@ -600,22 +903,26 @@ int main(int argc,char **argv){
 
       fac_pL_cx_map = pL_cx_map_s3;
       fac_pD_cx_map = pD_cx_map_s3;
+
+      fac_yrest = yrest_s3;
     }
   else { //awake after sleep
-      fac_AMPA_D2 = awake_AMPAd2_fix*0.7;
+      fac_AMPA_D2 = awake_AMPAd2_fix;
       fac_AMPA_TC = awake_AMPA_TC;
       fac_GABA_D2 = awake_GABAd2_fix;
       fac_GABA_TC = awake_GABA_TC_fix;
       fac_gkl_RE  = gkl_RE_awake_fix;
-      fac_gkl_TC  = gkl_TC_awake_fix*0.5;
-      fac_gkl     = gkl_awake_fix*0.7;
-      fac_gh_TC   = gh_TC_awake*3;
+      fac_gkl_TC  = gkl_TC_awake_fix;
+      fac_gkl     = gkl_awake_fix;
+      fac_gh_TC   = gh_TC_awake;
       fac_gkca_cx = gk_cx_slow_awake;
       fac_gkm_cx  = gk_cx_slow_awake;
       fac_gkv_cx  = gk_cx_spike_awake;
 
       fac_pL_cx_map = pL_cx_map_awake;
       fac_pD_cx_map = pD_cx_map_awake;
+
+      fac_yrest = yrest_awake;
     }
 
 
@@ -673,9 +980,31 @@ int main(int argc,char **argv){
       }
     }
 
+    // implement undercut if its time, if i say so
+    if((t >= homeo.undercut_start) && (homeo.undercut == 1)){
+     //printf("do the cut");
+     homeo.perform_undercut(cut_ids,cell_sizes,cells,num_cells,1);
+     homeo.undercut = -1; // set to -1 so it only cuts once 
+     printf("Cut \n");
+    }
+
+    // BM hand ramp connections
+    // Note: using CLUST ID's will do all of c1
+    // using CUT ID's will do traditionally cut cells
+    // if((t >= 10000) && (ramp==1)){
+    //   homeo.hand_ramp(clust_ids,cell_sizes,cells,num_cells);
+    //   ramp = -1;
+    // }
+
+    // Double stim stren every 5 seconds
+    // if((t>stim_start+1000) && ((ii % 250000) == 0)){
+    //   stim_stren = stim_stren * 2;
+    // }
+
     //implements homeostatic mechanisms
     if((ii >= homeo.fre_window) && (ii % homeo.fre_window) == 0){
-      homeo.spike_fre_calc(cell_sizes,cell_numbers); //figures out frequency of spiking
+      //homeo.spike_fre_calc(cell_sizes,cell_numbers); //figures out frequency of spiking
+      homeo.spike_fre_calc_local(clust_ids,cell_sizes,cell_numbers, SpikeFre); 
       int i = 0;
       for(i=0; i<num_cells; i++){
         if(cells[i]->type == E_CX || cells[i]->type == E_CXa || cells[i]->type == E_CX6 || cells[i]->type == E_CX3 || cells[i]->type == E_CX4 || cells[i]->type == E_CX5a || cells[i]->type == E_CX5b ){
@@ -684,12 +1013,23 @@ int main(int argc,char **argv){
 	}
       }
 
-      homeo.boost_activity(cell_sizes,cells,num_cells); //causes homeostatic changes
+      if(t >= homeo.start){
+        //homeo.boost_activity(cell_sizes,cells,num_cells); //causes homeostatic changes
+        homeo.boost_local(clust_ids,cell_sizes,cells,num_cells);
+      }
     }
+
+    // Cut Cell Recovery; once for every 5 spike free checks (4 seconds)
+    // Only run this 10 times since going in increments of 10...
+    // if((t>=(homeo.undercut_start+1000)) && ((ii % (2*homeo.fre_window)) == 0) && (recovery_count <=10)){
+    //     homeo.recovery(cut_ids,cell_sizes,cells,num_cells,1);
+    //     recovery_count = recovery_count+1;
+    //     printf("Recovery Count = %d \n", recovery_count);
+    // }
 
     t = t + TAU; //increase time
   } //end while loop
-
+  
   int computationTime = (int)difftime(time(NULL),start_time);
   printf("Computation time: %d s\n",(int)difftime(time(NULL),start_time));
   FILE * computationTimeFile = fopen((output_location+"computationSeconds.txt").c_str(), "w");

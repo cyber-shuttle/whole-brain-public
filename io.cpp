@@ -3,8 +3,21 @@
 #include "params.h"
 #include <string.h>
 
+#include <fstream>
+#include <vector>
+#include <string>
+std::ofstream outFile_in1("params_in.txt");
+std::ofstream outFile_in4("params_in4.txt");
+
 double print_receive(int m , int n, enum Cell_Type type); //still in main
+vector<double> print_receive_allIN(int m , int n, enum Cell_Type type);
 double print_receive_var(int m , int n, enum Cell_Type type, int index); //still in main
+double print_receive_syn(int m , int n, enum Cell_Type type); //still in main
+double print_receive_g(int m , int n, enum Cell_Type type); 
+double print_receive_g_1cell1syn(int m , int n, enum Cell_Type type); 
+double print_receive_d(int m , int n, enum Cell_Type type); 
+double print_receive_minis(int m , int n, enum Cell_Type type); 
+double print_receive_minifre(int m , int n, enum Cell_Type type); 
 
 void print_receive_gsynapse(int m , int n, enum Cell_Type type, enum Syn_Type stype, FILE *fp);
 void print_receive_gsynapse_index(int m , int n, enum Cell_Type from_type, enum Cell_Type type, enum Syn_Type stype, FILE *fp);
@@ -28,7 +41,15 @@ void load_input_params(
 		double&  homeo_fre_boost,
 		double&  homeo_target_f,
 		int&  homeo_fre_window,
-		int&  homeo_num_regions
+		int& homeo_start,
+		int&  homeo_num_regions,
+		int&  homeo_num_clusters,
+		int& undercut,
+		int& undercut_start,
+		double& stim_on,
+		double& stim_start,
+		double& stim_stop,
+		double& stim_stren
 
 		){
 
@@ -47,7 +68,15 @@ void load_input_params(
 	add_double_param(  homeo_fre_boost  );
 	add_double_param(  homeo_target_f   );
 	add_int_param(  homeo_fre_window    );
+	add_int_param(  homeo_start         );
 	add_int_param(  homeo_num_regions   );
+	add_int_param(  homeo_num_clusters  );
+	add_int_param(	undercut			);
+	add_int_param(	undercut_start		);
+	add_double_param(	stim_on		);
+	add_double_param(	stim_start		);
+	add_double_param(	stim_stop		);
+	add_double_param(	stim_stren		);
 
 	assert(load_parameters(argv[1]));
 	assert(cmdline_parameters(argc,argv));
@@ -56,7 +85,7 @@ void load_input_params(
 } //load_input_params
 
 //giant list of all the output files some are probably not used
-FILE *flocal, *f2, *f3, *f4, *f6, *f7, *f8, *f9, *f10, *f11, *f12, *f13, *f14, *f15, *f16, *f17, *f18, *f19,*f20,*f21,*f22,*f23,*f24,*f25,*f26,*f27,*f28, *f29, *f30, *f31, *f32; 
+FILE *flocal, *f2, *f3, *f4, *f6, *f7, *f8, *f9, *f10, *f11, *f12, *f13, *f14, *f15, *f16, *f17, *f18, *f19,*f20,*f21,*f22,*f23,*f24,*f25,*f26,*f27,*f28, *f29, *f30, *f31, *f32, *f33, *f34, *f35, *f36, *f37, *f38, *f39, *f40, *f41; 
 FILE *cx3, *cx4, *cx5a, *cx5b, *in3, *in4, *in5a, *in5b; // *cx2, *in2;
 FILE *cx3Currents, *cx4Currents, *cx5aCurrents, *cx5bCurrents; 
 //FILE *in3Currents, *in4Currents, *in5aCurrents, *in5bCurrents; 
@@ -357,8 +386,27 @@ void print_freq(double **cx_base_v_SOMA, double **cx5b_base_v_SOMA, Pair *cell_s
 			// Print currents
 			fprintf(f30,"%lf ", print_receive_var(i,j,E_CX,1000));     
 			fprintf(f30,"%lf ", print_receive_var(i,j,E_CX,1001));     
+			
+			// print synaptic weights
+			fprintf(f33, "%lf ", print_receive_syn(i,j,E_CX));
+			fprintf(f34, "%lf ", print_receive_g(i,j,E_CX));
+			fprintf(f35, "%lf ", print_receive_d(i,j,E_CX)); 
+			fprintf(f36, "%lf ", print_receive_minis(i,j,E_CX)); 
+			fprintf(f37, "%lf ", print_receive_minifre(i,j,E_CX)); 
+
+			fprintf(f38, "%lf ", print_receive_g_1cell1syn(i,j,E_IN));
+			fprintf(f39, "%lf ", print_receive_g_1cell1syn(i,j,E_IN4));
+
+			// fprintf(f40, "%Lvf ", print_receive_allIN(i,j,E_IN));
+			// fprintf(f41, "%Lvf ", print_receive_allIN(i,j,E_IN4));
+
+			for (const auto &e : print_receive_allIN(i,j,E_IN)) outFile_in1 << e << "\n";
+			for (const auto &e : print_receive_allIN(i,j,E_IN4)) outFile_in4 << e << "\n";
+    
 		}
 	}
+
+	// print individual synapse data for cell 1060
 
 	// rCX
 	if (Num_Types>E_rCX) for(i = 0; i < cell_sizes[E_rCX].x; ++i){
@@ -375,6 +423,17 @@ void print_freq(double **cx_base_v_SOMA, double **cx5b_base_v_SOMA, Pair *cell_s
 
 	fprintf(f11,"\n");
 	fprintf(f30,"\n");
+	fprintf(f33,"\n");
+	fprintf(f34,"\n");
+	fprintf(f35,"\n");
+	fprintf(f36,"\n");
+	fprintf(f37,"\n");
+
+	fprintf(f38,"\n");
+	fprintf(f39,"\n");
+
+	fprintf(f40,"\n");
+	fprintf(f41,"\n");
 
 	//fflush(f11);
 
@@ -783,6 +842,18 @@ void open_files(string output_location,FILE **field_file, int num_field_layers){
 //	f31 = fopen((output_location+"e_i_currents_cxa").c_str(), "w");
 	f32 = fopen((output_location+"e_i_currents_cx6").c_str(), "w");
 
+	f33 = fopen((output_location+"syn_strength_cx").c_str(), "w");
+	f34 = fopen((output_location+"g_syn_strength_cx").c_str(), "w");
+	f35 = fopen((output_location+"d_syn_strength_cx").c_str(), "w");
+	f36 = fopen((output_location+"minis_cx").c_str(), "w");
+	f37 = fopen((output_location+"minifre_cx").c_str(), "w");
+
+	f38 = fopen((output_location+"g_1syn_in").c_str(), "w");
+	f39 = fopen((output_location+"g_1syn_in4").c_str(), "w");
+
+	f40 = fopen((output_location+"all_in_vars").c_str(), "w");
+	f41 = fopen((output_location+"all_in4_vars").c_str(), "w");
+
  // cx2 = fopen((output_location+"time_cx2").c_str(), "w");
   cx3 = fopen((output_location+"time_cx3").c_str(), "w");
   cx4 = fopen((output_location+"time_cx4").c_str(), "w");
@@ -937,6 +1008,33 @@ void close_files(FILE **field_file, int num_field_layers){
 //	}
 	if(f32!=NULL){
 		fclose(f32);
+	}
+	if(f33!=NULL){
+		fclose(f33);
+	}
+	if(f34!=NULL){
+		fclose(f34);
+	}
+	if(f35!=NULL){
+		fclose(f35);
+	}
+	if(f36!=NULL){
+		fclose(f36);
+	}
+	if(f37!=NULL){
+		fclose(f37);
+	}
+	if(f38!=NULL){
+		fclose(f38);
+	}
+	if(f39!=NULL){
+		fclose(f39);
+	}
+	if(f40!=NULL){
+		fclose(f40);
+	}
+	if(f41!=NULL){
+		fclose(f41);
 	}
 	if(fconn!=NULL){
                 fclose(fconn);

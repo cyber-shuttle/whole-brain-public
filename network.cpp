@@ -1,7 +1,10 @@
 #include "network.h"
 #include <vector>
+#include <algorithm> 
 #include "io.h"
 using std::vector;
+
+inline double rand01(){return ((double) rand() / (RAND_MAX));}
 
 //TODO SynCall touching this variable directly in calc!
 //max number of connections for a cell of each type from a cell of each type not including if their are multipul connections between the same two cells
@@ -64,6 +67,38 @@ void set_cell_sizes(FILE* connections_file,int &Num_Types, Pair* &cell_sizes, in
  return;
 }
 
+void get_clusters(FILE* hsp_ids,int &Num_Cells_CX, int* &clust_ids){
+  int iter = 0;
+  int clust; 
+  clust_ids = new int[Num_Cells_CX];
+  while(fscanf(hsp_ids,"%d\n",&clust) == 1){
+    clust_ids[iter] = clust;
+    iter = iter+1;
+  }
+  return;
+}
+
+void get_undercut(FILE* undercut_ids,int &Num_Cells_CX, int* &cut_ids){
+  int iter = 0;
+  int cut; 
+  cut_ids = new int[Num_Cells_CX];
+  while(fscanf(undercut_ids,"%d\n",&cut) == 1){
+    cut_ids[iter] = cut;
+    iter = iter+1;
+  }
+  return;
+}
+
+void get_stimulation(FILE* stimulation_ids,int &Num_Cells_CX, int* &stim_ids){
+  int iter = 0;
+  int stim; 
+  stim_ids = new int[Num_Cells_CX];
+  while(fscanf(stimulation_ids,"%d\n",&stim) == 1){
+    stim_ids[iter] = stim;
+    iter = iter+1;
+  }
+  return;
+}
 
 void create_connections_from_file(Cell_Info *****cells_info,Pair* cell_sizes,FILE *connections_file,int Num_Types){
 
@@ -342,13 +377,228 @@ void Homeostasis::boost_activity(Pair *cell_sizes, CellSyn **cells, int num_cell
      for(k=0; k < cells[i]->num_syns; ++k){
 			if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPA_D2 || cells[i]->syns[k]->type == E_AMPA_D3)){
        cells[i]->syns[k]->strength= cells[i]->syns[k]->strength + cells[i]->syns[k]->strength*con_boost*boost_syn[j];
-       cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s+ cells[i]->syns[k]->mini_s*amp_boost * boost_syn[j];
-       cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre- cells[i]->syns[k]->mini_fre*fre_boost * boost_syn[j];
+       cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s + cells[i]->syns[k]->mini_s*amp_boost * boost_syn[j];
+       cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre - cells[i]->syns[k]->mini_fre*fre_boost * boost_syn[j];
 			}
      }
 		}
    }
 	}
+ }
+}
+
+void Homeostasis::boost_local(int* &clust_ids, Pair *cell_sizes, CellSyn **cells, int num_cells){
+
+ if (boost!=1) return;
+ int i = 0;
+ int j = 0;
+ //printf("boosted boost_syn_left:%d boost_syn_right:%d\n",boost_syn_left,boost_syn_right); 
+ for(i=0; i<num_cells; i++){
+    if(cells[i]->type == E_CX || cells[i]->type == E_CXa || cells[i]->type == E_CX6 || cells[i]->type == E_CX3 || cells[i]->type == E_CX4 || cells[i]->type == E_CX5a || cells[i]->type == E_CX5b ){
+      for(j = 0; j<num_clusters; j++){
+        //if( (cells[i]->m > int(cell_sizes[cells[i]->type].x * cut_locs[j])) && (cells[i]->m < int(cell_sizes[cells[i]->type].x * cut_locs[j+1]))  ){
+        if(clust_ids[cells[i]->m]==j){
+          // Add in leak current increases; from 0.3 up to 0.5
+          // Just using con boost for now
+          // Sign change? Trying minus now
+          //cells[i]->base_cell->fac_pL_cx_map = cells[i]->base_cell->fac_pL_cx_map + cells[i]->base_cell->fac_pL_cx_map * con_boost * boost_syn[j]; 
+          // Max pL of 0.5 (S3 setting)
+          //if(cells[i]->base_cell->fac_pL_cx_map < 0.1){
+          //   cells[i]->base_cell->fac_pL_cx_map = 0.1;
+          //}
+
+          int k = 0;
+          for(k=0; k < cells[i]->num_syns; ++k){
+            //if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPA_D2 || cells[i]->syns[k]->type == E_AMPA_D3)){
+            if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPAMap_D1)){   // || cells[i]->syns[k]->type == E_NMDAMap_D1 
+              
+              cells[i]->syns[k]->strength= cells[i]->syns[k]->strength + cells[i]->syns[k]->strength*con_boost*boost_syn[j];
+              cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s + cells[i]->syns[k]->mini_s*amp_boost * boost_syn[j];          
+              cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre + cells[i]->syns[k]->mini_fre*fre_boost * boost_syn[j]; 
+              
+              //  2x increase cap... Im not sure this is working tbh
+              // if(cells[i]->syns[k]->strength > 2*cells[i]->syns[k]->orig_con){
+              //   cells[i]->syns[k]->strength = 2*cells[i]->syns[k]->orig_con;
+              // }
+
+              // if(cells[i]->syns[k]->mini_s > 2*cells[i]->syns[k]->orig_minis){
+              //   cells[i]->syns[k]->mini_s = 2*cells[i]->syns[k]->orig_minis;
+              // }
+
+              // if(cells[i]->syns[k]->mini_fre > 2*cells[i]->syns[k]->orig_minif){
+              //   cells[i]->syns[k]->mini_fre = 2*cells[i]->syns[k]->orig_minif;
+              // }
+            }
+          }
+        }
+     }
+   }
+ }
+}
+
+// THIS IS NOT WORKING - POINTER, NOT COPY :(
+void Homeostasis::orig_strengths(CellSyn **cells, int num_cells){
+ int i = 0;
+ for(i=0; i<num_cells; i++){
+    int k = 0;
+    for(k=0; k < cells[i]->num_syns; ++k){
+      // std::copy (cells[i]->syns[k]->strength, cells[i]->syns[k]->strength+1, cells[i]->syns[k]->orig_con);
+      // std::copy (cells[i]->syns[k]->mini_s, cells[i]->syns[k]->mini_s+1, cells[i]->syns[k]->orig_minis);
+      // std::copy (cells[i]->syns[k]->mini_fre, cells[i]->syns[k]->mini_fre+1, cells[i]->syns[k]->orig_minif);
+
+		  cells[i]->syns[k]->orig_con = cells[i]->syns[k]->strength;
+      cells[i]->syns[k]->orig_minis = cells[i]->syns[k]->mini_s;
+      cells[i]->syns[k]->orig_minif = cells[i]->syns[k]->mini_fre;
+    }
+  }
+}
+
+void Homeostasis::syn_lengths(CellSyn **cells, int num_cells, double ***Dist_Prob){
+ printf("Starting Syn Lengths... \n");
+ int i = 0;
+ for(i=0; i<num_cells; i++){
+    int k = 0;
+    for(k=0; k < cells[i]->num_syns; ++k){
+      //printf("from_x i 0: %f \n",Dist_Prob[cells[i]->syns[k]->from_x][i][0]);
+      printf("Len: %lf", cells[i]->syns[k]->length);
+      //cells[i]->syns[k]->length = Dist_Prob[1][1][0];
+    }
+  }
+}
+
+void Homeostasis::recovery(int* &cut_ids, Pair *cell_sizes, CellSyn **cells, int num_cells, int cut_mini){
+ // Make sure undercut is on & has already happened
+ if (undercut!=-1) return;
+ int i = 0;
+ double rec_step = 0.1;
+ for(i=0; i<num_cells; i++){
+    if(cells[i]->type == E_CX || cells[i]->type == E_CXa || cells[i]->type == E_CX6 || cells[i]->type == E_CX3 || cells[i]->type == E_CX4 || cells[i]->type == E_CX5a || cells[i]->type == E_CX5b){ // || cells[i]->type == E_IN || cells[i]->type == E_INa || cells[i]->type == E_IN6 || cells[i]->type == E_IN3 || cells[i]->type == E_IN4 || cells[i]->type == E_IN5a || cells[i]->type == E_IN5b ){
+      if(cut_ids[cells[i]->m]==1){
+        int k = 0;
+        for(k=0; k < cells[i]->num_syns; ++k){
+          //printf("pre boost = %f \n", cells[i]->syns[k]->strength);
+          cells[i]->syns[k]->strength = cells[i]->syns[k]->strength + (rec_step*cells[i]->syns[k]->orig_con);
+          //printf("orig con boost = %f \n", (rec_step*cells[i]->syns[k]->orig_con));
+          //printf("new con = %f \n", cells[i]->syns[k]->strength);
+          
+          
+          // redundant, in boost_local
+          // if(cells[i]->syns[k]->strength > 10*cells[i]->syns[k]->orig_con){
+          //   cells[i]->syns[k]->strength = 10*cells[i]->syns[k]->orig_con;
+          // }
+
+          // if(cells[i]->syns[k]->mini_s > 10*cells[i]->syns[k]->orig_minis){
+          //   cells[i]->syns[k]->mini_s = 10*cells[i]->syns[k]->orig_minis;
+          // }
+
+          // if(cells[i]->syns[k]->mini_fre > 10*cells[i]->syns[k]->orig_minif){
+          //   cells[i]->syns[k]->mini_fre = 10*cells[i]->syns[k]->orig_minif;
+          // }
+
+          if(cut_mini==1){
+            cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s + (1/10)*cells[i]->syns[k]->orig_minis;          
+          //cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre + (1/10)*cells[i]->syns[k]->orig_minif; // mini_fre not currently cut
+          }
+        }
+      }
+	  }
+  }
+}
+
+void Homeostasis::boost_cx(int* &clust_ids, Pair *cell_sizes, CellSyn **cells, int num_cells){
+
+ int i = 0;
+ int j = 0;
+ double inc = 5; // 0.0004; 
+ //printf("boosted boost_syn_left:%d boost_syn_right:%d\n",boost_syn_left,boost_syn_right); 
+ for(i=0; i<num_cells; i++){
+	if(cells[i]->type == E_CX || cells[i]->type == E_CXa || cells[i]->type == E_CX6 || cells[i]->type == E_CX3 || cells[i]->type == E_CX4 || cells[i]->type == E_CX5a || cells[i]->type == E_CX5b ){
+   for(j = 0; j<num_clusters; j++){
+		 //if( (cells[i]->m > int(cell_sizes[cells[i]->type].x * cut_locs[j])) && (cells[i]->m < int(cell_sizes[cells[i]->type].x * cut_locs[j+1]))  ){
+    if(clust_ids[cells[i]->m]==j){
+     int k = 0;
+     for(k=0; k < cells[i]->num_syns; ++k){
+			 //if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPA_D2 || cells[i]->syns[k]->type == E_AMPA_D3)){
+       //if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPAMap_D1)){   // || cells[i]->syns[k]->type == E_NMDAMap_D1 
+       cells[i]->syns[k]->strength= cells[i]->syns[k]->strength*inc; // use set num. cells[i]->syns[k]->strength*con_boost*boost_syn[j];
+        //cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s+ cells[i]->syns[k]->mini_s*amp_boost * boost_syn[j];          
+        //cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre- cells[i]->syns[k]->mini_fre*fre_boost * boost_syn[j];
+       //}
+      }
+		}
+   }
+	}
+ }
+}
+
+void Homeostasis::reduce_column(CellSyn **cells, int num_cells){
+  for(int i=0; i<num_cells; i++) {
+    for(int k=0; k < cells[i]->num_syns; k++){
+      if (cells[i]->syns[k]->length == 0.0){
+        cells[i]->syns[k]->strength = cells[i]->syns[k]->strength / 2; 
+      }
+    }
+  }
+}
+
+
+void Homeostasis::perform_undercut(int* &cut_ids, Pair *cell_sizes, CellSyn **cells, int num_cells, int cut_mini){
+
+ if (undercut!=1) return;
+ int i = 0;
+ //int sender = 0;
+ for(i=0; i<num_cells; i++){
+  // This is using all cx cell layers... limit to just uppers? later
+	// Need to cut inhib cells too but NOT Thalamus
+  if(cells[i]->type == E_CX || cells[i]->type == E_CXa || cells[i]->type == E_CX6 || cells[i]->type == E_CX3 || cells[i]->type == E_CX4 || cells[i]->type == E_CX5a || cells[i]->type == E_CX5b){ // || cells[i]->type == E_IN || cells[i]->type == E_INa || cells[i]->type == E_IN6 || cells[i]->type == E_IN3 || cells[i]->type == E_IN4 || cells[i]->type == E_IN5a || cells[i]->type == E_IN5b ){
+   if(cut_ids[cells[i]->m]==1){
+    // Add in leak current increases; from 0.15 to 0.3, could go 0.45? SWS is 0.5
+    //cells[i]->base_cell->pL_scaler = 1.5; 
+    int k = 0;
+    for(k=0; k < cells[i]->num_syns; ++k){
+    //if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPA_D2 || cells[i]->syns[k]->type == E_AMPA_D3)){
+     //if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPAMap_D1 || cells[i]->syns[k]->type == E_NMDAMap_D1 )){   //
+      //sender = cells[i]->syns[k]->from_cell; // this gives cell ID (not column)
+      //if(cut_ids[cells[sender]->m]==0){ // if sender NOT in injury zone, cut connection
+      if(rand01() <= 1){
+        cells[i]->syns[k]->strength = cells[i]->syns[k]->strength * 0;
+        cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s * 0;
+        cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre * 0;
+      }
+
+      // // If connection is longer than 2.5 mm (0.0025 m), cut it. 
+      // if (cells[i]->syns[k]->length > 0.005){
+      //   cells[i]->syns[k]->strength = cells[i]->syns[k]->strength * 0;
+      //   cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s * 0;
+      //   //cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre * 0;
+      // }
+      // else if (cells[i]->syns[k]->length == 0.0){
+      //   //cells[i]->syns[k]->strength = cells[i]->syns[k]->strength * 0;
+      //   cells[i]->syns[k]->mini_s = cells[i]->syns[k]->mini_s * 0;
+      //   // cells[i]->syns[k]->mini_fre = cells[i]->syns[k]->mini_fre * 0;
+      // }
+    }
+	 }
+	}
+ }
+}
+
+void Homeostasis::hand_ramp(int* &cut_ids, Pair *cell_sizes, CellSyn **cells, int num_cells){
+ int i = 0;
+ //printf("boosted boost_syn_left:%d boost_syn_right:%d\n",boost_syn_left,boost_syn_right); 
+ for(i=0; i<num_cells; i++){
+  // This is using all cx cell layers... limit to just uppers? later
+	if(cells[i]->type == E_CX || cells[i]->type == E_CXa || cells[i]->type == E_CX6 || cells[i]->type == E_CX3 || cells[i]->type == E_CX4 || cells[i]->type == E_CX5a || cells[i]->type == E_CX5b ){
+   if(cut_ids[cells[i]->m]==1){
+    int k = 0;
+    for(k=0; k < cells[i]->num_syns; ++k){
+    //if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPA_D2 || cells[i]->syns[k]->type == E_AMPA_D3)){
+     if(cells[i]->syns[k]->from_type ==  cells[i]->syns[k]->to_type && (cells[i]->syns[k]->type == E_AMPAMap_D1)){   // || cells[i]->syns[k]->type == E_NMDAMap_D1 
+      cells[i]->syns[k]->strength = cells[i]->syns[k]->strength * 10;
+		 }
+    }
+	 }
+  }
  }
 }
 
@@ -473,6 +723,158 @@ void Homeostasis::spike_fre_calc(Pair *cell_sizes, int *cell_numbers){
  }
 }
 
+void Homeostasis::spike_fre_calc_local(int* &clust_ids, Pair *cell_sizes, int *cell_numbers, FILE* SpikeFre){
+ printf("calculating spike frequency \n");
+ int total = 0;  
+ int i = 0;
+ int j = 0;
+ int k = 0;
+
+
+ for(k =0; k<num_clusters; k++){
+  total_region[k] = 0;
+ }
+  
+ printf("adding up spikes \n");
+ //printf("i cx = %d \n",int(cell_sizes[E_CX].x)); // 10242, all of them
+ for(i = 0; i < cell_sizes[E_CX].x; ++i){
+  for(j = 0; j < cell_sizes[E_CX].y; ++j){ // what is j?? 1 I hope..
+   int cur_fre = fre_receive(i,j,E_CX); // 1 cell?
+   for(k=0; k<num_clusters; k++){
+		//if((i > int(cell_sizes[E_CX].x * cut_locs[k])) && (i < int(cell_sizes[E_CX].x * cut_locs[k+1])) ){  
+    if(clust_ids[i]==k){
+     total_region[k] = cur_fre + total_region[k];
+		}
+   }
+   total = total + cur_fre;
+  }
+ }
+    
+ // for(i = 0; i < cell_sizes[E_CXa].x; ++i){
+ //  for(j = 0; j < cell_sizes[E_CXa].y; ++j){
+ //   int cur_fre = fre_receive(i,j,E_CXa);
+ //   for(k=0; k<num_regions; k++){
+ //		if((i  > int(cell_sizes[E_CXa].x * cut_locs[k])) && ( i < int(cell_sizes[E_CXa].x * cut_locs[k+1])) ){  
+ //     total_region[k] = cur_fre + total_region[k];
+ //		}
+ //   }
+ //   total = total + cur_fre;
+ //  }
+ // }
+
+ for(i = 0; i < cell_sizes[E_CX6].x; ++i){
+  for(j = 0; j < cell_sizes[E_CX6].y; ++j){
+   int cur_fre = fre_receive(i,j,E_CX6);
+   for(k=0; k<num_clusters; k++){
+		//if( (i > int(cell_sizes[E_CX6].x * cut_locs[k])) && (i < int(cell_sizes[E_CX6].x * cut_locs[k+1])) ){  
+    if(clust_ids[i]==k){ 
+     total_region[k] = cur_fre + total_region[k];
+		}
+   }
+   total = total + cur_fre;
+  }
+ }
+
+ for(i = 0; i < cell_sizes[E_CX3].x; ++i){
+  for(j = 0; j < cell_sizes[E_CX3].y; ++j){
+   int cur_fre = fre_receive(i,j,E_CX3);
+   for(k=0; k<num_clusters; k++){
+		//if((i  > int(cell_sizes[E_CX3].x * cut_locs[k])) && (i < int(cell_sizes[E_CX3].x * cut_locs[k+1])) ){  
+    if(clust_ids[i]==k){ 
+     total_region[k] = cur_fre + total_region[k];
+		}
+   }
+   total = total + cur_fre;
+  }
+ }
+
+
+ for(i = 0; i < cell_sizes[E_CX4].x; ++i){
+  for(j = 0; j < cell_sizes[E_CX4].y; ++j){
+   int cur_fre = fre_receive(i,j,E_CX4);
+   for(k=0; k<num_clusters; k++){
+		//if((i  > int(cell_sizes[E_CX4].x * cut_locs[k])) && (i < int(cell_sizes[E_CX4].x * cut_locs[k+1])) ){  
+    if(clust_ids[i]==k){ 
+     total_region[k] = cur_fre + total_region[k];
+		}
+   }
+   total = total + cur_fre;
+  }
+ }
+
+
+ for(i = 0; i < cell_sizes[E_CX5a].x; ++i){
+  for(j = 0; j < cell_sizes[E_CX5a].y; ++j){
+   int cur_fre = fre_receive(i,j,E_CX5a);
+   for(k=0; k<num_clusters; k++){
+		//if((i  > int(cell_sizes[E_CX5a].x * cut_locs[k])) && (i < int(cell_sizes[E_CX5a].x * cut_locs[k+1])) ){  
+    if(clust_ids[i]==k){ 
+     total_region[k] = cur_fre + total_region[k];
+		}
+   }
+   total = total + cur_fre;
+  }
+ }
+
+
+ for(i = 0; i < cell_sizes[E_CX5b].x; ++i){
+  for(j = 0; j < cell_sizes[E_CX5b].y; ++j){
+   int cur_fre = fre_receive(i,j,E_CX5b);
+   for(k=0; k<num_clusters; k++){
+		//if((i  > int(cell_sizes[E_CX5b].x * cut_locs[k])) && (i < int(cell_sizes[E_CX5b].x * cut_locs[k+1])) ){  
+    if(clust_ids[i]==k){ 
+     total_region[k] = cur_fre + total_region[k];
+		}
+   }
+   total = total + cur_fre;
+  }
+ }
+
+
+ printf("finding frequency \n");
+ int number_of_cx_cells = cell_numbers[E_CX] + cell_numbers[E_CX6] +cell_numbers[E_CX3] +cell_numbers[E_CX4] +cell_numbers[E_CX5a] +cell_numbers[E_CX5b] ; // + cell_numbers[E_CXa];
+ double frequency = ((float)total) / number_of_cx_cells / (((float)fre_window)/50.0);
+ int clust_sizes[num_clusters];
+ // find number of cells per clust
+ // * 6 for 6 layers
+ for(k=0; k<num_clusters; k++){
+   clust_sizes[k] = std::count(clust_ids, clust_ids+10242,k)*6;
+ }
+
+ for(k=0; k<num_clusters; k++){
+  frequencies[k] =  ((float)total_region[k]) / clust_sizes[k] / (((float)fre_window)/50.0);
+  printf("total_freqency: %lf  region:%d frequency:%lf total:%d \n", frequency,k,frequencies[k],total_region[k]);
+  //fprintf(SpikeFre,"%d ", clust_sizes[k]); // just to check clust sizes
+  fprintf(SpikeFre,"%lf ", frequencies[k]); // whats printed is literally whats used in determining up or down
+ }
+ fprintf(SpikeFre,"\n");
+
+
+ printf("setting boosts \n");
+ for(k=0; k<num_clusters; k++){
+  // THIS IS LOCAL FILE
+  // TEST, multiply by diff between target & current
+  // Diff will be TINY either way tho, so *1000? 
+  // Previously: if frequency == target, downscales! Biased towards downscaling
+  // Above not true, same equation when equal anyway.... if freq = target, eqn = 0. 
+  // Previously, if neither true, boost syn remains as it was I guess
+  // if(frequencies[k]<target_f){
+  //  boost_syn[k] = (target_f - frequencies[k])*200;
+  // }else if(frequencies[k]>target_f){
+  //  // Slower downscaling by half, use *0.5
+  //  boost_syn[k] = (target_f - frequencies[k])*200;
+  // }else{
+  //   boost_syn[k] = 0; // let old = old + 0 (stay the same)
+  // }
+
+  boost_syn[k] = (target_f - frequencies[k])*200;
+
+  // TEST, ONLY BOOST CLUSTER 1
+  //if( k != 1){
+  //  boost_syn[k] = 0;
+  //}
+ }
+}
 
 void LocalFieldPotential::allocate_state_save(Pair * const cell_sizes){
 

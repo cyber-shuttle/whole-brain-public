@@ -1024,15 +1024,18 @@ std::mt19937 gen(1937);
 		   if (distribution(gen)){
 //			if(txi==0){cerr<<"generated PY-PY connection --- 1.2 \n";}
 		       double currEdgeWeightFactor = weight_factor[sc_x + indOffset][tx + indOffset][fromLayer][toLayer];
+		      //  if (d<= 0.0001 ){
+			    //  currEdgeWeightFactor *= 5; // local weights scaled up to test their influence
+                      //  }
+          // if (d>0.005 ){
+			    // currEdgeWeightFactor = currEdgeWeightFactor / 2; // all weights scaled down
+          //  }
 
-          //  // Modify strength based on distance here
-          //  if (d>0.01 ){
-			    //   currEdgeWeightFactor = currEdgeWeightFactor / 5; // long weights scaled down
-          // }
+          if (d>0.01 ){
+			      currEdgeWeightFactor = currEdgeWeightFactor / 5; // long weights scaled down
+          }
 
-		       if (d<= 0.0001 ){
-			     currEdgeWeightFactor *= 5; // local weights scaled up to test their influence
-                       }else if ( d > CN.C[c].radius_max ){
+          if ( d > CN.C[c].radius_max ){
 		    	     currEdgeWeightFactor = 0;
 		       }
 		       if (currEdgeWeightFactor >0){

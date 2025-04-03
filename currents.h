@@ -42,6 +42,7 @@ extern double fac_GABA_TC;
 extern double fac_pD_cx_map;
 extern double fac_pL_cx_map;
 
+extern double fac_yrest;
 
 class BaseCell{
 
@@ -52,6 +53,10 @@ class BaseCell{
   virtual double get_v_soma() =0;
   virtual double get_y_var() =0;
   virtual void calc(double,double, double*, double*) = 0; 
+  virtual vector<double> get_in_all() = 0;
+
+  // This creates the variable, but DOES NOT !! properly initialize to 1
+  double pL_scaler = 1;
 
   BaseCell(){
   }
@@ -152,7 +157,9 @@ typedef struct{
 }Syn_Info;
 
 class GiantSyn;
+
 int get_cell_index(int type, int m, int n);
+double get_connection_length(int from, int to);
 
 class Syn{
 
@@ -163,25 +170,33 @@ class Syn{
   double mini_fre;
   enum Cell_Type to_type;
   enum Cell_Type from_type;
-  //int to_x;
-  //int to_y;
-  //int from_x;
-  //int from_y;
+  int to_x;
+  int to_y;
+  int from_x;
+  int from_y;
   int from_cell; //from which cell we receive input
   enum Syn_Type type;
   double lastspike;
   double delay; // delay in miliseconds for current synapse
   bool appliedCalc;
+  double g_track;
+  double d_track;
+
+  double length;
+
+  double orig_con;
+  double orig_minis;
+  double orig_minif;
   GiantSyn *giant; //accumulator for spiking data, one per cell. NULL if not present for the particular synapse
 
   Syn(Syn_Info *syn_info, GiantSyn *g=NULL){ 
     this->strength = syn_info->strength;
     this->to_type = syn_info->to_type;
     this->from_type = syn_info->from_type;
-    //this->to_x = syn_info->to_x;
-    //this->to_y = syn_info->to_y;
-    //this->from_x = syn_info->from_x;
-    //this->from_y = syn_info->from_y;
+    this->to_x = syn_info->to_x;
+    this->to_y = syn_info->to_y;
+    this->from_x = syn_info->from_x;
+    this->from_y = syn_info->from_y;
     this->from_cell = get_cell_index(syn_info->from_type,syn_info->from_x,syn_info->from_y);
     this->type = syn_info->type;
     this->mini_s = syn_info->mini_s;
@@ -189,6 +204,10 @@ class Syn{
     this->giant = g;
     this->delay = syn_info->delay;
     this->appliedCalc = true;
+    this->g_track = 0;
+    this->d_track = 0;
+
+    this->length = get_connection_length(this->from_x, this->to_x);
 
     //note that this way we just delete syn_info structure
     //but pointer arrays to syn_info still remain allocated.
@@ -213,6 +232,8 @@ class RS:public OtherBase{
   double gamma1;
   int spike;
 
+  double pL_scaler2;
+
  RS():OtherBase(){ 
    init();
  }
@@ -228,6 +249,10 @@ class RS:public OtherBase{
     return this->y;
   }
 
+  vector<double> get_in_all(){
+   return {0};
+ }
+
  double get_s_cx_dend(){
    return this->S_CX_DEND;
  }
@@ -238,8 +263,9 @@ double H1(double x)
  }
 
 
+ // PL AND PD HARD CODED HERE... IS THIS WHY THE INITIAL ADJUSTMENT IS SO BIG / DEP VARIABLE STAYS LOW?
  void init(){ 
-	bl=-0.3;
+  bl=-0.3;
 	sl=0.8;
 	ml=10.;
 	pl=0.5;
@@ -269,6 +295,8 @@ double H1(double x)
 	Idc=0;
 	mu1 = 0.0008;
 	mu2 = 0.002; 
+
+  pL_scaler2 = 1;
 	
 	xp=-1+sigma;
         x=-1+sigma;
@@ -292,6 +320,14 @@ public:
  FS1():OtherBase(){  
        init();
        } 
+
+ vector<double> get_in_all(){
+   vector<double> all_vars = {this->xp, this->xpp, this->mu, this->sigma_n, this->beta_n, this->ii, this->gg,
+              this->sigma_dc, this->beta_dc, this->beta_ii, this->sigma_ii, this->Tcr,
+              this->x, this->y, this->alpha, this->sigma, this->sigma_e, this->beta_e, this->Idc};
+
+   return all_vars;
+ }
 
  double get_v_soma(){
    return this->v_SOMA;
@@ -1020,13 +1056,13 @@ class AMPAmapD1:public Syn {
     h=HHH;
     I=0;
     g=0;
-    d=1;
+    d= 1;
     lastrelease = -10000;
     lastrelease1 = -10000;
     newrelease = -10000; //0;
     Tau = 50;
     Tcr=-100;
-    gamma=exp(-HHH/2);
+    gamma=exp(-HHH/2); // e^(-0.02/2) = e^(-0.01) = 0.99
   }
   void iii(unsigned int seek) {
     //printf("srand seek\n");
@@ -1127,7 +1163,7 @@ public:
      //       lastrelease1 = -10000;
      //       newrelease = 0;
      //       Tau = 50;
-     gamma=exp(-HHH/0.379);
+     gamma= exp(-HHH/0.379);
    }
    void iii(unsigned int seek) {
      //printf("srand seek\n");
@@ -1192,6 +1228,10 @@ public:
     return 0;
   }
 
+  vector<double> get_in_all(){
+   return {0};
+ }
+
 /* Reduced model modif */
  void init(double *y) {
 
@@ -1234,6 +1274,10 @@ public:
   double get_y_var() {
     return 0;
   }
+
+  vector<double> get_in_all(){
+   return {0};
+ }
 
  void init(double *y) {
 
@@ -1339,6 +1383,10 @@ public:
   double get_y_var() {
     return 0;
   }
+
+  vector<double> get_in_all(){
+   return {0};
+ }
 
 
  void init(double *y, int n_dend) {
