@@ -9,7 +9,7 @@ project:
 workspace:
   location: /workspace
   resources:
-    min_cpu: 4
+    min_cpu: 60
     min_gpu: 0
     gpu_mem: 1024
     gpu_class: ["H100", "A100", "Generic"]
@@ -21,7 +21,7 @@ workspace:
   input_collection: []
   model_collection:
     - source: cybershuttle
-      identifier: ~/cybershuttle/dataset/bazhlab/whole-brain-conn_info_v3
+      identifier: ~/cybershuttle/dataset/bazhlab-whole-brain/conn_info_v3
       mount_point: /data/conn_info_v3
   data_collection: []
 
@@ -33,5 +33,5 @@ additional_dependencies:
     - numpy
     - pandas
     - matplotlib
-    - libgcc
+    - gxx_linux-64
   pip: []
