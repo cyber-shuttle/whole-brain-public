@@ -1,0 +1,37 @@
+project:
+  name: Add your title here
+  version: 1.0.0
+  description: Add your description here
+  tags:
+    - neuroscience
+  homepage: https://github.com/bazhlab-ucsd/whole-brain-public
+
+workspace:
+  location: /workspace
+  resources:
+    min_cpu: 4
+    min_gpu: 0
+    gpu_mem: 1024
+    gpu_class: ["H100", "A100", "Generic"]
+    min_mem: 4096
+    walltime: 720
+    cluster: expanse
+    group: Default
+    queue: shared
+  input_collection: []
+  model_collection:
+    - source: cybershuttle
+      identifier: ~/cybershuttle/dataset/bazhlab/whole-brain-conn_info_v3
+      mount_point: /data/conn_info_v3
+  data_collection: []
+
+additional_dependencies:
+  conda:
+    - python=3.10
+    - pip
+    - ipywidgets
+    - numpy
+    - pandas
+    - matplotlib
+    - libgcc
+  pip: []
