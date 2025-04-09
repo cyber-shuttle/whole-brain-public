@@ -18,7 +18,7 @@ workspace:
   model_collection:
     - source: cybershuttle
       identifier: bazhlab-whole-brain
-      mount_point: /data
+      mount_point: /cybershuttle_data/bazhlab-whole-brain
   data_collection: []
 
 additional_dependencies:
