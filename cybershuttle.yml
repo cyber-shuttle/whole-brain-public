@@ -14,15 +14,11 @@ workspace:
     gpu_mem: 1024
     gpu_class: ["H100", "A100", "Generic"]
     min_mem: 4096
-    walltime: 720
-    cluster: expanse
-    group: Default
-    queue: shared
   input_collection: []
   model_collection:
     - source: cybershuttle
-      identifier: ~/cybershuttle/dataset/bazhlab-whole-brain/conn_info_v3
-      mount_point: /data/conn_info_v3
+      identifier: bazhlab-whole-brain
+      mount_point: /data
   data_collection: []
 
 additional_dependencies:
