@@ -9,7 +9,7 @@ project:
 workspace:
   location: /workspace
   resources:
-    min_cpu: 60
+    min_cpu: 1
     min_gpu: 0
     gpu_mem: 1024
     gpu_class: ["H100", "A100", "Generic"]
@@ -34,7 +34,7 @@ additional_dependencies:
     - h5py
     - plotly
     - ipywidgets
-    - csv
-    - threading
-    - asyncio
+    - anaconda::csvkit
+    - anaconda::multiprocess
+    - nmcginn::asyncio
   pip: []
