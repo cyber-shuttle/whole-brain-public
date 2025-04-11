@@ -33,8 +33,4 @@ additional_dependencies:
     - scipy
     - h5py
     - plotly
-    - ipywidgets
-    - anaconda::csvkit
-    - anaconda::multiprocess
-    - nmcginn::asyncio
   pip: []
