@@ -33,4 +33,5 @@ additional_dependencies:
     - scipy
     - h5py
     - plotly
-  pip: []
+  pip: 
+    - nbformat
