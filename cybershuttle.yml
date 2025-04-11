@@ -15,11 +15,11 @@ workspace:
     gpu_class: ["H100", "A100", "Generic"]
     min_mem: 4096
   input_collection: []
-  model_collection:
+  model_collection: []
+  data_collection: 
     - source: cybershuttle
       identifier: bazhlab-whole-brain
       mount_point: /cybershuttle_data/bazhlab-whole-brain
-  data_collection: []
 
 additional_dependencies:
   conda:
