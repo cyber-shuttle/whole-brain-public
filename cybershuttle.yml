@@ -30,4 +30,11 @@ additional_dependencies:
     - pandas
     - matplotlib
     - gxx_linux-64
+    - scipy
+    - h5py
+    - plotly
+    - ipywidgets
+    - csv
+    - threading
+    - asyncio
   pip: []
