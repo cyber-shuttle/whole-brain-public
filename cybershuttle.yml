@@ -1,20 +1,22 @@
 project:
-  name: Add your title here
-  version: 1.0.0
-  description: Add your description here
-  tags:
-    - neuroscience
+  name: "Spatio-temporal dynamics of sleep in large-scale brain models"
+  description: "Running a large-scale brain model during awake and sleep states"
   homepage: https://github.com/bazhlab-ucsd/whole-brain-public
+  authors:
+    - Maxim Bazhenov
+    - Gabriela Navas Zuloaga
+  tags:
+    - neurodata25
+    - bazhlab
+    - whole-brain
 
 workspace:
   location: /workspace
   resources:
     min_cpu: 1
     min_gpu: 0
-    gpu_mem: 1024
-    gpu_class: ["H100", "A100", "Generic"]
     min_mem: 4096
-  input_collection: []
+    gpu_mem: 1024
   model_collection: []
   data_collection: 
     - source: cybershuttle
